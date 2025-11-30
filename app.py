@@ -217,6 +217,64 @@ elif pagina == "Gerenciar Consultas (CRUD)":
                 st.warning("Faltam dados de Médicos, Pacientes ou Clínicas no banco.")
                 st.form_submit_button("Agendar (Bloqueado)")
 
+        st.divider()
+        st.subheader("Cadastrar Novo Paciente")
+        with st.form("form_add_paciente"):
+            cpf_paciente = st.text_input("CPF do Paciente")
+            nome_paciente = st.text_input("Nome do Paciente")
+            data_nasc = st.date_input("Data de Nascimento")
+            sexo = st.selectbox("Sexo", ["M", "F", "Outro"])
+            submit_paciente = st.form_submit_button("Cadastrar Paciente")
+        if submit_paciente:
+            try:
+                cursor.execute("INSERT INTO Paciente (CpfPaciente, NomePac, DataNasc, Sexo) VALUES (%s, %s, %s, %s)",
+                               (cpf_paciente, nome_paciente, data_nasc.strftime("%Y-%m-%d"), sexo))
+                conn.commit()
+                st.success("Paciente cadastrado com sucesso!")
+            except mysql.connector.Error as e:
+                st.error(f"Erro ao cadastrar paciente: {e}")
+
+        st.divider()
+        st.subheader("Remover Paciente")
+        cpf_remover = st.text_input("CPF do Paciente para Remover")
+        if st.button("Remover Paciente"):
+            try:
+                cursor.execute("DELETE FROM Paciente WHERE CpfPaciente = %s", (cpf_remover,))
+                conn.commit()
+                if cursor.rowcount > 0:
+                    st.success(f"Paciente {cpf_remover} removido com sucesso!")
+                else:
+                    st.error("CPF não encontrado ou paciente já removido.")
+            except mysql.connector.Error as e:
+                st.error(f"Erro ao remover paciente: {e}")
+
+        st.divider()
+        st.subheader("Lista de Pacientes")
+        df_pacientes = pd.read_sql("SELECT CpfPaciente, NomePac, DataNascimento, Genero FROM Paciente ORDER BY NomePac ASC", conn)
+        st.dataframe(df_pacientes, use_container_width=True)
+
+        st.divider()
+        st.subheader("Editar Paciente")
+        cpf_editar = st.text_input("CPF do Paciente para Editar")
+        if cpf_editar:
+            paciente_editar = pd.read_sql(f"SELECT * FROM Paciente WHERE CpfPaciente = '{cpf_editar}'", conn)
+            if not paciente_editar.empty:
+                nome_novo = st.text_input("Novo Nome", paciente_editar['NomePac'][0])
+                data_nasc_novo = st.date_input("Nova Data de Nascimento", paciente_editar['DataNascimento'][0])
+                genero_novo = st.selectbox("Novo Gênero", ["M", "F", "Outro"], index=["M", "F", "Outro"].index(paciente_editar['Genero'][0]) if paciente_editar['Genero'][0] in ["M", "F", "Outro"] else 0)
+                telefone_novo = st.text_input("Novo Telefone", paciente_editar['Telefone'][0] if 'Telefone' in paciente_editar else "")
+                email_novo = st.text_input("Novo Email", paciente_editar['Email'][0] if 'Email' in paciente_editar else "")
+                if st.button("Salvar Alterações"):
+                    try:
+                        cursor.execute("UPDATE Paciente SET NomePac=%s, DataNascimento=%s, Genero=%s, Telefone=%s, Email=%s WHERE CpfPaciente=%s",
+                                       (nome_novo, data_nasc_novo.strftime("%Y-%m-%d"), genero_novo, telefone_novo, email_novo, cpf_editar))
+                        conn.commit()
+                        st.success("Paciente atualizado com sucesso!")
+                    except mysql.connector.Error as e:
+                        st.error(f"Erro ao atualizar paciente: {e}")
+            else:
+                st.info("CPF não encontrado.")
+
         # DELETE
         st.divider()
         st.subheader("Cancelar Consulta")
