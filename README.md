@@ -27,7 +27,7 @@ pip install -r requirements.txt
 No terminal, execute:
 
 ```bash
-streamlit run app.py
+python -m streamlit run app.py
 ```
 
 O sistema abrirá automaticamente no seu navegador em `http://localhost:8501`.
