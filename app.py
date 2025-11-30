@@ -74,6 +74,32 @@ if pagina == "Dashboard (Bonificação)":
         col2.metric("Média de Pacientes/Médico", f"{media:.1f}")
 
         st.divider()
+        # RANKING DE MÉDICOS COM MAIS CONSULTAS
+        st.subheader("Ranking: Médicos com Mais Consultas")
+        query_rank_med = """
+        SELECT m.NomeMed, m.Especialidade, COUNT(c.IdConsulta) as TotalConsultas
+        FROM Medico m
+        JOIN Consulta c ON m.CodMed = c.CodMed
+        GROUP BY m.NomeMed, m.Especialidade
+        ORDER BY TotalConsultas DESC
+        LIMIT 10
+        """
+        df_rank_med = pd.read_sql(query_rank_med, conn)
+        st.dataframe(df_rank_med, use_container_width=True)
+
+        # RANKING DE PACIENTES COM MAIS CONSULTAS
+        st.subheader("Ranking: Pacientes com Mais Consultas")
+        query_rank_pac = """
+        SELECT p.NomePac, COUNT(c.IdConsulta) as TotalConsultas
+        FROM Paciente p
+        JOIN Consulta c ON p.CpfPaciente = c.CpfPaciente
+        GROUP BY p.NomePac
+        ORDER BY TotalConsultas DESC
+        LIMIT 10
+        """
+        df_rank_pac = pd.read_sql(query_rank_pac, conn)
+        st.dataframe(df_rank_pac, use_container_width=True)
+        st.divider()
 
         # GRÁFICO 1
         st.subheader("1. Especialidades mais procuradas")
@@ -126,14 +152,30 @@ elif pagina == "Gerenciar Consultas (CRUD)":
     if conn:
         cursor = conn.cursor()
 
+        # BUSCA RÁPIDA
+        st.subheader("Busca Rápida de Consultas")
+        busca_paciente = st.text_input("Buscar por nome do paciente")
+        busca_medico = st.text_input("Buscar por nome do médico")
+        busca_clinica = st.text_input("Buscar por nome da clínica")
+        filtro_sql = []
+        if busca_paciente:
+            filtro_sql.append(f"p.NomePac LIKE '%{busca_paciente}%'")
+        if busca_medico:
+            filtro_sql.append(f"m.NomeMed LIKE '%{busca_medico}%'")
+        if busca_clinica:
+            filtro_sql.append(f"cl.NomeCli LIKE '%{busca_clinica}%'")
+        where_sql = ' AND '.join(filtro_sql)
+        if where_sql:
+            where_sql = 'WHERE ' + where_sql
         # VIEW
-        query_view = """
+        query_view = f"""
         SELECT c.IdConsulta, cl.NomeCli, m.NomeMed, p.NomePac, c.Data_Hora
         FROM Consulta c
         JOIN Clinica cl ON c.CodCli = cl.CodCli
         JOIN Medico m ON c.CodMed = m.CodMed
         JOIN Paciente p ON c.CpfPaciente = p.CpfPaciente
-        ORDER BY c.Data_Hora DESC
+        {where_sql}
+        ORDER BY c.IdConsulta ASC
         """
         df_view = pd.read_sql(query_view, conn)
         st.dataframe(df_view)
@@ -151,9 +193,12 @@ elif pagina == "Gerenciar Consultas (CRUD)":
                 med_selecionado = st.selectbox("Médico", medicos['CodMed'] + " - " + medicos['NomeMed'])
                 pac_selecionado = st.selectbox("Paciente", pacientes['CpfPaciente'] + " - " + pacientes['NomePac'])
                 cli_selecionado = st.selectbox("Clínica", clinicas['CodCli'] + " - " + clinicas['NomeCli'])
-                data_hora = st.text_input("Data e Hora (AAAA-MM-DD HH:MM:SS)", "2025-11-28 10:00:00")
-                
-                if st.form_submit_button("Agendar Consulta"):
+                import datetime
+                data_consulta = st.date_input("Data da Consulta", datetime.date.today())
+                hora_consulta = st.time_input("Hora da Consulta", datetime.datetime.now().time())
+                data_hora = datetime.datetime.combine(data_consulta, hora_consulta).strftime("%Y-%m-%d %H:%M:%S")
+                submit_nova = st.form_submit_button("Agendar Consulta")
+                if submit_nova:
                     try:
                         cod_med = med_selecionado.split(" - ")[0]
                         cpf_pac = pac_selecionado.split(" - ")[0]
@@ -161,7 +206,11 @@ elif pagina == "Gerenciar Consultas (CRUD)":
                         cursor.execute("INSERT INTO Consulta (CodCli, CodMed, CpfPaciente, Data_Hora) VALUES (%s, %s, %s, %s)", 
                                     (cod_cli, cod_med, cpf_pac, data_hora))
                         conn.commit()
-                        st.success("Agendado! Atualize a página.")
+                        st.info(f"Linhas afetadas: {cursor.rowcount}")
+                        if cursor.rowcount > 0:
+                            st.success("Agendado! Atualize a página.")
+                        else:
+                            st.error("Nenhuma linha foi inserida. Verifique os dados e permissões do banco.")
                     except mysql.connector.Error as e:
                         st.error(f"Erro ao inserir: {e}")
             else:
