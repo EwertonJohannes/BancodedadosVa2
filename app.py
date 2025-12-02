@@ -320,6 +320,58 @@ elif pagina == "Gerenciar Consultas (CRUD)":
 
         st.divider()
 
+        # CONSULTA POR DATA/MÊS/ANO
+        st.subheader("Consultar Agenda")
+        
+        col_tipo_filtro, col_inputs = st.columns([1, 3])
+        
+        with col_tipo_filtro:
+            tipo_filtro = st.radio("Filtrar por:", ["Dia", "Mês", "Ano"])
+        
+        where_clause = ""
+        descricao_filtro = ""
+        
+        with col_inputs:
+            if tipo_filtro == "Dia":
+                data_agenda = st.date_input("Selecione a Data", key="busca_data_agenda_new")
+                where_clause = f"DATE(c.Data_Hora) = '{data_agenda}'"
+                descricao_filtro = data_agenda.strftime('%d/%m/%Y')
+                
+            elif tipo_filtro == "Mês":
+                col_mes, col_ano = st.columns(2)
+                import datetime
+                hoje = datetime.date.today()
+                mes_sel = col_mes.selectbox("Mês", range(1, 13), index=hoje.month-1)
+                ano_sel = col_ano.number_input("Ano", min_value=2000, max_value=2100, value=hoje.year)
+                where_clause = f"MONTH(c.Data_Hora) = {mes_sel} AND YEAR(c.Data_Hora) = {ano_sel}"
+                descricao_filtro = f"{mes_sel:02d}/{ano_sel}"
+                
+            elif tipo_filtro == "Ano":
+                import datetime
+                hoje = datetime.date.today()
+                ano_sel = st.number_input("Ano", min_value=2000, max_value=2100, value=hoje.year)
+                where_clause = f"YEAR(c.Data_Hora) = {ano_sel}"
+                descricao_filtro = f"{ano_sel}"
+
+        if st.button("Buscar Consultas"):
+            query_agenda = f"""
+            SELECT c.IdConsulta, c.Data_Hora, m.NomeMed as Médico, p.NomePac as Paciente, cl.NomeCli as Clínica
+            FROM Consulta c
+            JOIN Medico m ON c.CodMed = m.CodMed
+            JOIN Paciente p ON c.CpfPaciente = p.CpfPaciente
+            JOIN Clinica cl ON c.CodCli = cl.CodCli
+            WHERE {where_clause}
+            ORDER BY c.Data_Hora ASC
+            """
+            df_agenda = pd.read_sql(query_agenda, conn)
+            
+            if not df_agenda.empty:
+                st.success(f"📅 {len(df_agenda)} consulta(s) encontrada(s) para {descricao_filtro}")
+                st.dataframe(df_agenda, use_container_width=True)
+            else:
+                st.info(f"Nenhuma consulta agendada para {descricao_filtro}.")
+
+
         # INSERT
         st.subheader("Nova Consulta")
         medicos = pd.read_sql("SELECT CodMed, NomeMed FROM Medico", conn)
@@ -355,71 +407,6 @@ elif pagina == "Gerenciar Consultas (CRUD)":
                 st.warning("Faltam dados de Médicos, Pacientes ou Clínicas no banco.")
                 st.form_submit_button("Agendar (Bloqueado)")
 
-        st.divider()
-        st.subheader("Cadastrar Novo Paciente")
-        with st.form("form_add_paciente"):
-            cpf_paciente = st.text_input("CPF do Paciente", placeholder="Apenas números (11 dígitos)", max_chars=11)
-            nome_paciente = st.text_input("Nome do Paciente")
-            data_nasc = st.date_input("Data de Nascimento")
-            sexo = st.selectbox("Sexo", ["M", "F", "Outro"])
-            submit_paciente = st.form_submit_button("Cadastrar Paciente")
-        if submit_paciente:
-            # Remove caracteres não numéricos do CPF
-            cpf_limpo = ''.join(filter(str.isdigit, cpf_paciente))
-            
-            if len(cpf_limpo) != 11:
-                st.error("CPF deve conter exatamente 11 dígitos numéricos!")
-            elif not nome_paciente:
-                st.error("Nome do paciente é obrigatório!")
-            else:
-                try:
-                    cursor.execute("INSERT INTO Paciente (CpfPaciente, NomePac, DataNascimento, Genero) VALUES (%s, %s, %s, %s)",
-                                   (cpf_limpo, nome_paciente, data_nasc.strftime("%Y-%m-%d"), sexo))
-                    conn.commit()
-                    st.success("Paciente cadastrado com sucesso!")
-                except mysql.connector.Error as e:
-                    st.error(f"Erro ao cadastrar paciente: {e}")
-
-        st.divider()
-        st.subheader("Remover Paciente")
-        cpf_remover = st.text_input("CPF do Paciente para Remover")
-        if st.button("Remover Paciente"):
-            try:
-                cursor.execute("DELETE FROM Paciente WHERE CpfPaciente = %s", (cpf_remover,))
-                conn.commit()
-                if cursor.rowcount > 0:
-                    st.success(f"Paciente {cpf_remover} removido com sucesso!")
-                else:
-                    st.error("CPF não encontrado ou paciente já removido.")
-            except mysql.connector.Error as e:
-                st.error(f"Erro ao remover paciente: {e}")
-
-        st.divider()
-        st.subheader("Lista de Pacientes")
-        df_pacientes = pd.read_sql("SELECT CpfPaciente, NomePac, DataNascimento, Genero FROM Paciente ORDER BY NomePac ASC", conn)
-        st.dataframe(df_pacientes, use_container_width=True)
-
-        st.divider()
-        st.subheader("Editar Paciente")
-        cpf_editar = st.text_input("CPF do Paciente para Editar")
-        if cpf_editar:
-            paciente_editar = pd.read_sql(f"SELECT * FROM Paciente WHERE CpfPaciente = '{cpf_editar}'", conn)
-            if not paciente_editar.empty:
-                nome_novo = st.text_input("Novo Nome", paciente_editar['NomePac'][0])
-                data_nasc_novo = st.date_input("Nova Data de Nascimento", paciente_editar['DataNascimento'][0])
-                genero_novo = st.selectbox("Novo Gênero", ["M", "F", "Outro"], index=["M", "F", "Outro"].index(paciente_editar['Genero'][0]) if paciente_editar['Genero'][0] in ["M", "F", "Outro"] else 0)
-                telefone_novo = st.text_input("Novo Telefone", paciente_editar['Telefone'][0] if 'Telefone' in paciente_editar else "")
-                email_novo = st.text_input("Novo Email", paciente_editar['Email'][0] if 'Email' in paciente_editar else "")
-                if st.button("Salvar Alterações"):
-                    try:
-                        cursor.execute("UPDATE Paciente SET NomePac=%s, DataNascimento=%s, Genero=%s, Telefone=%s, Email=%s WHERE CpfPaciente=%s",
-                                       (nome_novo, data_nasc_novo.strftime("%Y-%m-%d"), genero_novo, telefone_novo, email_novo, cpf_editar))
-                        conn.commit()
-                        st.success("Paciente atualizado com sucesso!")
-                    except mysql.connector.Error as e:
-                        st.error(f"Erro ao atualizar paciente: {e}")
-            else:
-                st.info("CPF não encontrado.")
 
         # DELETE
         st.divider()
