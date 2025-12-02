@@ -258,3 +258,15 @@ BEGIN
     VALUES (USER(), NOW(), OLD.IdConsulta, 'Consulta Removida pelo Sistema');
 END$$
 DELIMITER ;
+
+-- GATILHO (TRIGGER) 2: PREVENÇÃO DE DATA RETROATIVA
+DELIMITER $$
+CREATE TRIGGER trg_Validar_Data_Consulta
+BEFORE INSERT ON Consulta
+FOR EACH ROW
+BEGIN
+    IF NEW.Data_Hora <= NOW() THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'ERRO DE INTEGRIDADE: Não é permitido agendar consultas para datas/horas passadas. Verifique a Data_Hora.';
+    END IF;
+END$$
+DELIMITER ;
