@@ -426,7 +426,7 @@ elif pagina == "Gerenciar Consultas (CRUD)":
         conn.close()
 
 # ==============================================================================
-# PÁGINA 3: GERENCIAR CADASTROS
+# PÁGINA 3: GERENCIAR CADASTROS (COM GESTÃO DE CONEXÃO CORRIGIDA)
 # ==============================================================================
 elif pagina == "Gerenciar Cadastros":
     st.title("📋 Gerenciamento de Cadastros")
@@ -479,7 +479,7 @@ elif pagina == "Gerenciar Cadastros":
             st.divider()
             st.subheader("🔍 Detalhes do Paciente")
             
-            cpf_selecionado = st.selectbox("Selecione um paciente", df_pacientes['CPF'].tolist() if not df_pacientes.empty else [])
+            cpf_selecionado = st.selectbox("Selecione um paciente", df_pacientes['CPF'].tolist() if not df_pacientes.empty else [], key="sel_pac_tab1")
             
             if cpf_selecionado:
                 # Dados do paciente
@@ -519,16 +519,16 @@ elif pagina == "Gerenciar Cadastros":
             # Busca de Médicos
             col_search1, col_search2, col_search3 = st.columns([2, 2, 1])
             with col_search1:
-                busca_medico = st.text_input("🔍 Buscar médico por nome", key="busca_med")
+                busca_medico = st.text_input("🔍 Buscar médico por nome", key="busca_med_tab2")
             with col_search2:
                 especialidades_disponiveis = pd.read_sql("SELECT DISTINCT Especialidade FROM Medico ORDER BY Especialidade", conn)
-                filtro_esp = st.selectbox("Filtrar por especialidade", ["Todas"] + especialidades_disponiveis['Especialidade'].tolist(), key="filtro_esp")
+                filtro_esp = st.selectbox("Filtrar por especialidade", ["Todas"] + especialidades_disponiveis['Especialidade'].tolist(), key="filtro_esp_tab2")
             with col_search3:
                 st.write("")
                 st.write("")
-                btn_limpar_med = st.button("🔄 Limpar", key="limpar_med")
+                btn_limpar_med = st.button("🔄 Limpar", key="limpar_med_tab2")
             
-            # Query base
+            # Query base (READ)
             query_medicos = """
             SELECT 
                 m.CodMed as 'Código',
@@ -562,7 +562,7 @@ elif pagina == "Gerenciar Cadastros":
             st.divider()
             st.subheader("🔍 Detalhes do Médico")
             
-            cod_med_selecionado = st.selectbox("Selecione um médico", df_medicos['Código'].tolist() if not df_medicos.empty else [])
+            cod_med_selecionado = st.selectbox("Selecione um médico", df_medicos['Código'].tolist() if not df_medicos.empty else [], key="sel_med_tab2")
             
             if cod_med_selecionado:
                 medico_info = df_medicos[df_medicos['Código'] == cod_med_selecionado].iloc[0]
@@ -604,6 +604,110 @@ elif pagina == "Gerenciar Cadastros":
                 else:
                     st.info("Este médico ainda não tem consultas agendadas.")
         
+            st.divider()
+
+            # ==========================================================
+            # C (CREATE) - Cadastrar Novo Médico
+            # ==========================================================
+            st.subheader("➕ Cadastrar Novo Médico")
+
+            with st.form("form_add_medico_tab2"):
+                st.caption("Código (CHAR 7, ex: MED0020), Nome e Especialidade são obrigatórios.")
+                col_f1, col_f2 = st.columns(2)
+                with col_f1:
+                    cod_med = st.text_input("Código do Médico", max_chars=7, key="med_cod_create_tab2")
+                    nome_med = st.text_input("Nome Completo", key="med_nome_create_tab2")
+                    especialidade = st.text_input("Especialidade", key="med_esp_create_tab2")
+                with col_f2:
+                    genero = st.selectbox("Gênero", ["F", "M", "Outro"], key="med_gen_create_tab2")
+                    telefone = st.text_input("Telefone", key="med_tel_create_tab2")
+                    email = st.text_input("E-mail", key="med_email_create_tab2")
+                
+                submit_med = st.form_submit_button("Cadastrar Médico (CREATE)")
+
+            if submit_med:
+                cursor = conn.cursor()
+                if cod_med and nome_med and especialidade:
+                    try:
+                        genero_db = genero[0].upper() if genero != "Outro" else "" 
+                        query = "INSERT INTO Medico (CodMed, NomeMed, Genero, Telefone, Email, Especialidade) VALUES (%s, %s, %s, %s, %s, %s)"
+                        cursor.execute(query, (cod_med, nome_med, genero_db, telefone, email, especialidade))
+                        conn.commit()
+                        st.success(f"Médico **{nome_med}** cadastrado com sucesso!")
+                    except mysql.connector.Error as e:
+                        st.error("❌ Erro ao cadastrar Médico: Código ou Email podem já existir.")
+                    finally:
+                        cursor.close()
+                else:
+                    st.error("Preencha todos os campos obrigatórios!")
+            
+            st.divider()
+
+            # ==========================================================
+            # U (UPDATE) - Atualizar Dados do Médico
+            # ==========================================================
+            st.subheader("🔄 Atualizar Dados do Médico")
+            
+            df_medicos_upd = pd.read_sql("SELECT CodMed, NomeMed FROM Medico", conn)
+            lista_medicos = {row['CodMed']: row['NomeMed'] for index, row in df_medicos_upd.iterrows()}
+            
+            medico_selecionado = st.selectbox("Selecione o Médico para Atualizar", options=list(lista_medicos.keys()), format_func=lambda x: f"{x} - {lista_medicos[x]}", key="upd_med_sel_tab2")
+
+            if medico_selecionado:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT * FROM Medico WHERE CodMed = %s", (medico_selecionado,))
+                dados_atuais = cursor.fetchone()
+                cursor.close()
+
+                if dados_atuais:
+                    with st.form("form_update_medico_tab2"):
+                        st.markdown(f"**Atualizando:** {dados_atuais['NomeMed']} (Teste de **ON UPDATE CASCADE**)")
+                        novo_email = st.text_input("Novo E-mail", value=dados_atuais['Email'] or "", key="email_upd_tab2")
+                        novo_tel = st.text_input("Novo Telefone", value=dados_atuais['Telefone'] or "", key="tel_upd_tab2")
+                        nova_esp = st.text_input("Nova Especialidade", value=dados_atuais['Especialidade'] or "", key="esp_upd_tab2")
+                        
+                        submit_update = st.form_submit_button("Atualizar Dados (UPDATE)")
+
+                    if submit_update:
+                        cursor = conn.cursor()
+                        try:
+                            query = "UPDATE Medico SET Email = %s, Telefone = %s, Especialidade = %s WHERE CodMed = %s"
+                            cursor.execute(query, (novo_email, novo_tel, nova_esp, medico_selecionado))
+                            conn.commit()
+                            st.success(f"Médico **{dados_atuais['NomeMed']}** atualizado com sucesso!")
+                        except mysql.connector.Error as e:
+                            st.error(f"❌ Erro ao atualizar dados: {e}")
+                        finally:
+                            cursor.close()
+            
+            st.divider()
+
+            # ==========================================================
+            # D (DELETE) - Remover Médico
+            # ==========================================================
+            st.subheader("🗑️ Remover Médico")
+            
+            df_medicos_del = pd.read_sql("SELECT CodMed, NomeMed FROM Medico", conn)
+            lista_medicos_del = {row['CodMed']: row['NomeMed'] for index, row in df_medicos_del.iterrows()}
+            
+            medico_deletar = st.selectbox("Selecione o Médico para Deletar", options=list(lista_medicos_del.keys()), format_func=lambda x: f"{x} - {lista_medicos_del[x]}", key='del_med_tab2')
+
+            delete_button = st.button("CONFIRMAR EXCLUSÃO (DELETE)", type="primary", key="del_medico_btn")
+            if delete_button and medico_deletar:
+                cursor = conn.cursor()
+                try:
+                    st.warning("A exclusão testará o **ON DELETE RESTRICT** (Violação de FK).")
+                    cursor.execute("DELETE FROM Medico WHERE CodMed = %s", (medico_deletar,))
+                    conn.commit()
+                    st.success(f"✅ Médico {medico_deletar} removido com sucesso!")
+                except mysql.connector.IntegrityError as e:
+                    st.error("❌ ERRO: Violação de Integridade Referencial (FK).")
+                    st.warning("Este médico possui consultas agendadas. Remova-as primeiro!")
+                except mysql.connector.Error as e:
+                    st.error(f"❌ Erro ao deletar Médico: {e}")
+                finally:
+                    cursor.close()
+
         # ========== ABA CLÍNICAS ==========
         with tab3:
             st.header("Gerenciar Clínicas")
@@ -611,13 +715,13 @@ elif pagina == "Gerenciar Cadastros":
             # Busca de Clínicas
             col_search1, col_search2 = st.columns([3, 1])
             with col_search1:
-                busca_clinica = st.text_input("🔍 Buscar clínica por nome", key="busca_cli")
+                busca_clinica = st.text_input("🔍 Buscar clínica por nome", key="busca_cli_tab3")
             with col_search2:
                 st.write("")
                 st.write("")
-                btn_limpar_cli = st.button("🔄 Limpar", key="limpar_cli")
+                btn_limpar_cli = st.button("🔄 Limpar", key="limpar_cli_tab3")
             
-            # Query base
+            # Query base (READ)
             query_clinicas = """
             SELECT 
                 cl.CodCli as 'Código',
@@ -643,7 +747,7 @@ elif pagina == "Gerenciar Cadastros":
             st.divider()
             st.subheader("🔍 Detalhes da Clínica")
             
-            cod_cli_selecionado = st.selectbox("Selecione uma clínica", df_clinicas['Código'].tolist() if not df_clinicas.empty else [])
+            cod_cli_selecionado = st.selectbox("Selecione uma clínica", df_clinicas['Código'].tolist() if not df_clinicas.empty else [], key="sel_cli_tab3")
             
             if cod_cli_selecionado:
                 clinica_info = df_clinicas[df_clinicas['Código'] == cod_cli_selecionado].iloc[0]
@@ -691,6 +795,109 @@ elif pagina == "Gerenciar Cadastros":
                 else:
                     st.info("Esta clínica ainda não tem consultas agendadas.")
         
+            st.divider()
+
+            # ==========================================================
+            # C (CREATE) - Cadastrar Nova Clínica
+            # ==========================================================
+            st.subheader("➕ Cadastrar Nova Clínica")
+            
+            with st.form("form_add_clinica_tab3"):
+                st.caption("Código (CHAR 7, ex: 0000009) e Nome são obrigatórios.")
+                col_f1, col_f2 = st.columns(2)
+                with col_f1:
+                    cod_cli = st.text_input("Código da Clínica", max_chars=7, key="cli_cod_create_tab3")
+                    nome_cli = st.text_input("Nome da Clínica", key="cli_nome_create_tab3")
+                    endereco = st.text_input("Endereço", key="cli_end_create_tab3")
+                with col_f2:
+                    telefone = st.text_input("Telefone", key="cli_tel_create_tab3")
+                    email = st.text_input("E-mail", key="cli_email_create_tab3")
+                
+                submit_cli = st.form_submit_button("Cadastrar Clínica (CREATE)")
+
+            if submit_cli:
+                cursor = conn.cursor()
+                if cod_cli and nome_cli:
+                    try:
+                        query = "INSERT INTO Clinica (CodCli, NomeCli, Endereco, Telefone, Email) VALUES (%s, %s, %s, %s, %s)"
+                        cursor.execute(query, (cod_cli, nome_cli, endereco, telefone, email))
+                        conn.commit()
+                        st.success(f"Clínica **{nome_cli}** cadastrada com sucesso!")
+                    except mysql.connector.Error as e:
+                        st.error("❌ Erro ao cadastrar Clínica: Código ou Nome podem já existir.")
+                    finally:
+                        cursor.close()
+                else:
+                    st.error("Preencha todos os campos obrigatórios!")
+            
+            st.divider()
+
+            # ==========================================================
+            # U (UPDATE) - Atualizar Dados da Clínica
+            # ==========================================================
+            st.subheader("🔄 Atualizar Dados da Clínica")
+            
+            df_clinicas_upd = pd.read_sql("SELECT CodCli, NomeCli FROM Clinica", conn)
+            lista_clinicas = {row['CodCli']: row['NomeCli'] for index, row in df_clinicas_upd.iterrows()}
+            
+            clinica_selecionada = st.selectbox("Selecione a Clínica para Atualizar", options=list(lista_clinicas.keys()), format_func=lambda x: f"{x} - {lista_clinicas[x]}", key="upd_cli_sel_tab3")
+
+            if clinica_selecionada:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT * FROM Clinica WHERE CodCli = %s", (clinica_selecionada,))
+                dados_atuais = cursor.fetchone()
+                cursor.close()
+
+                if dados_atuais:
+                    with st.form("form_update_clinica_tab3"):
+                        st.markdown(f"**Atualizando:** {dados_atuais['NomeCli']} (Teste de **ON UPDATE CASCADE**)")
+                        novo_endereco = st.text_input("Novo Endereço", value=dados_atuais['Endereco'] or "", key="end_upd_tab3")
+                        novo_tel = st.text_input("Novo Telefone", value=dados_atuais['Telefone'] or "", key="tel_upd_tab3")
+                        novo_email = st.text_input("Novo E-mail", value=dados_atuais['Email'] or "", key="email_upd_tab3")
+                        
+                        submit_update = st.form_submit_button("Atualizar Dados (UPDATE)")
+
+                    if submit_update:
+                        cursor = conn.cursor()
+                        try:
+                            query = "UPDATE Clinica SET Endereco = %s, Telefone = %s, Email = %s WHERE CodCli = %s"
+                            cursor.execute(query, (novo_endereco, novo_tel, novo_email, clinica_selecionada))
+                            conn.commit()
+                            st.success(f"Clínica **{dados_atuais['NomeCli']}** atualizada com sucesso!")
+                        except mysql.connector.Error as e:
+                            st.error(f"❌ Erro ao atualizar dados: {e}")
+                        finally:
+                            cursor.close()
+            
+            st.divider()
+
+            # ==========================================================
+            # D (DELETE) - Remover Clínica
+            # ==========================================================
+            st.subheader("🗑️ Remover Clínica")
+            
+            df_clinicas_del = pd.read_sql("SELECT CodCli, NomeCli FROM Clinica", conn)
+            lista_clinicas_del = {row['CodCli']: row['NomeCli'] for index, row in df_clinicas_del.iterrows()}
+            
+            clinica_deletar = st.selectbox("Selecione a Clínica para Deletar", options=list(lista_clinicas_del.keys()), format_func=lambda x: f"{x} - {lista_clinicas_del[x]}", key='del_cli_tab3')
+
+            delete_button = st.button("CONFIRMAR EXCLUSÃO (DELETE)", type="primary", key="del_clinica_btn")
+
+            if delete_button and clinica_deletar:
+                cursor = conn.cursor()
+                try:
+                    st.warning("A exclusão testará o **ON DELETE RESTRICT** (Violação de FK).")
+                    cursor.execute("DELETE FROM Clinica WHERE CodCli = %s", (clinica_deletar,))
+                    conn.commit()
+                    st.success(f"✅ Clínica {clinica_deletar} removida com sucesso!")
+                except mysql.connector.IntegrityError as e:
+                    st.error("❌ ERRO: Violação de Integridade Referencial (FK).")
+                    st.warning("Esta clínica possui consultas agendadas. Remova-as primeiro!")
+                except mysql.connector.Error as e:
+                    st.error(f"❌ Erro ao deletar Clínica: {e}")
+                finally:
+                    cursor.close()
+
         conn.close()
 
 # ==============================================================================
