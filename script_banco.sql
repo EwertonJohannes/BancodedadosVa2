@@ -245,6 +245,10 @@ CREATE TABLE IF NOT EXISTS Log_Cancelamento (
     Usuario VARCHAR(50),
     DataCancelamento DATETIME,
     IdConsultaDeletada INT,
+    CpfPaciente CHAR(11),
+    CodMed CHAR(7),
+    CodCli CHAR(7),
+    Data_Hora DATETIME,
     Motivo VARCHAR(100)
 );
 
@@ -254,8 +258,8 @@ CREATE TRIGGER trg_Auditoria_Cancelamento
 AFTER DELETE ON Consulta
 FOR EACH ROW
 BEGIN
-    INSERT INTO Log_Cancelamento (Usuario, DataCancelamento, IdConsultaDeletada, Motivo)
-    VALUES (USER(), NOW(), OLD.IdConsulta, 'Consulta Removida pelo Sistema');
+    INSERT INTO Log_Cancelamento (Usuario, DataCancelamento, IdConsultaDeletada, CpfPaciente, CodMed, CodCli, Data_Hora, Motivo)
+    VALUES (USER(), NOW(), OLD.IdConsulta, OLD.CpfPaciente, OLD.CodMed, OLD.CodCli, OLD.Data_Hora, 'Consulta Removida pelo Sistema');
 END$$
 DELIMITER ;
 
